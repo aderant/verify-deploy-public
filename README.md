@@ -108,6 +108,17 @@ This script will:
 - Deploy the Verify application components
 - Configure ingress and TLS certificates
 
+For an existing AKS cluster where you only want to test a new packaged chart version, you can skip the Terraform-dependent bootstrap steps:
+
+```bash
+./providers/azure/scripts/deploy-helm.sh \
+  --upgrade-only \
+  --cluster-name <aks-name> \
+  --resource-group <aks-resource-group> \
+  --chart-package helm-charts/verify/verify-<version>.tgz \
+  --values my-values.yaml
+```
+
 #### 4. Verify Deployment
 
 ```bash
@@ -1158,6 +1169,19 @@ helm upgrade verify ./helm-charts/verify \
   --values my-custom-versions.yaml
 ```
 
+### One-time database cleanup before upgrade
+For test environments, you can run a one-off database cleanup job before the Helm upgrade by enabling the chart hook:
+
+```bash
+helm upgrade verify ./helm-charts/verify \
+  --values providers/azure/helm-values-generated.yaml \
+  --values providers/azure/external-secrets-values.yaml \
+  --set databaseCleanup.enabled=true \
+  --set-string databaseCleanup.confirmDestructive=WIPE_DATABASE
+```
+
+The hook runs before the upgrade and deletes itself on success. For external database deployments it reads connection settings from the `db` secret; when `database.mode=in-cluster`, it uses `postgres-secret`. The destructive job is rendered only when `databaseCleanup.confirmDestructive=WIPE_DATABASE` is set alongside `databaseCleanup.enabled=true`. Turn `databaseCleanup.enabled` back off after that run so later upgrades do not wipe the database again.
+
 ### Updating Infrastructure
 ```bash
 # Update Terraform configuration
@@ -1322,8 +1346,12 @@ externalSecrets:
 ./scripts/validate.sh
 
 # Update application
-./providers/azure/scripts/generate-helm-values-updated.sh
-helm upgrade verify ./helm-charts/verify --values providers/azure/helm-values-generated.yaml
+./providers/azure/scripts/deploy-helm.sh \
+  --upgrade-only \
+  --cluster-name <aks-name> \
+  --resource-group <aks-resource-group> \
+  --chart-package helm-charts/verify/verify-<version>.tgz \
+  --values my-values.yaml
 ```
 
 ## 🤝 Contributing
