@@ -1,3 +1,49 @@
+# Azure DevOps Pipelines
+
+*Chad Wessel – 3/18/2026*
+
+The guide below was provided by Aderant and used to deploy the infrastructure and application code with Terraform and Helm charts. Minor changes were made to ensure that this deployment succeeded within Azure DevOps pipelines using gated approvals. In addition, because we maintain separate development and production environments, some configuration is split by environment where necessary. Finally, the Terraform commands are executed directly instead of using `providers/azure/scripts/deploy-infra.sh` because of issues with the remote Terraform state backend and the use of custom variable files.
+
+### Configuration
+
+Please see the repo contents for the full view. The following outlines the development and production configuration split used by the pipelines.
+
+Remote state backend configuration is environment-specific and is maintained outside this repository.
+./providers/azure/terraform/backend - remote state configuration should be stored here
+
+- dev.hcl
+
+- prd.hcl
+
+Terraform variable files are also environment-specific and are maintained outside this repository.
+./providers/azure/terraform/tfvars - should be stored here
+
+- dev.tfvars
+
+- prd.tfvars
+
+./my-values-{env}.yaml - Helm Chart variables
+
+- my-values-dev.yaml
+
+- my-values-prd.yaml
+
+Certificates
+
+All required certificates for each environment have been uploaded to the DevOps project's "Library" under secret files. From there, they are securely pulled into the release pipeline and used to perform the necessary steps in the application deployment process.
+
+- fullchain-{env}.pem
+
+- privkey-{env}.pem
+
+- saml-{env}.pem
+
+### Gated Approval
+
+Currently, both the dev and prd releases/deployments must be approved by a member of the "HerculesAI Verify Team" before deployment proceeds. This team can be managed within the "HerculesAI Verify" project in the ML-Infrastructure Azure DevOps organization.
+
+---
+
 # Verify Deploy - Multi-Cloud Infrastructure as Code
 
 This repository contains the complete infrastructure setup for the Verify application, a document verification system that can be deployed to multiple cloud providers and generic Kubernetes clusters. The deployment supports Azure Kubernetes Service (AKS), Amazon EKS (placeholder), and generic Kubernetes clusters with flexible configuration options.
@@ -8,7 +54,7 @@ This repository contains the complete infrastructure setup for the Verify applic
   - [Azure Deployment](#azure-deployment)
   - [Generic Kubernetes Deployment](#generic-kubernetes-deployment)
   - [AWS Deployment (Placeholder)](#aws-deployment-placeholder)
-- [🏗️ Architecture Overview](#️-architecture-overview)
+- [🏗️ Architecture Overview](#-architecture-overview)
 - [🚀 Supported Deployment Scenarios](#-supported-deployment-scenarios)
 - [📁 Repository Structure](#-repository-structure)
 - [📋 Configuration Guide](#-configuration-guide)
@@ -18,13 +64,13 @@ This repository contains the complete infrastructure setup for the Verify applic
 - [🐳 Container Registry](#-container-registry)
 - [📦 Helm Charts](#-helm-charts)
 - [🔧 Cluster Access](#-cluster-access)
-- [🛠️ Troubleshooting](#️-troubleshooting)
+- [🛠️ Troubleshooting](#-troubleshooting)
 - [🎯 Common Deployment Scenarios](#-common-deployment-scenarios)
 - [📚 Best Practices](#-best-practices)
 - [🔄 Maintenance and Updates](#-maintenance-and-updates)
 - [📊 Monitoring and Logging](#-monitoring-and-logging)
 - [🔄 Migration Guide](#-migration-guide)
-- [🏗️ Bastion Host Implementation](#️-bastion-host-implementation)
+- [🏗️ Bastion Host Implementation](#-bastion-host-implementation)
 - [🔐 External Secrets Integration](#-external-secrets-integration)
 - [📋 Scripts Overview](#-scripts-overview)
 - [🤝 Contributing](#-contributing)
@@ -42,6 +88,7 @@ Complete deployment to Azure Kubernetes Service (AKS) with managed infrastructur
 #### Prerequisites
 
 **Required Tools:**
+
 - **Azure CLI** (v2.50.0+): [Install Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
 - **Terraform** (v1.5.0+): [Install Terraform](https://learn.hashicorp.com/tutorials/terraform/install-cli)
 - **Helm** (v3.12.0+): [Install Helm](https://helm.sh/docs/intro/install/)
@@ -49,6 +96,7 @@ Complete deployment to Azure Kubernetes Service (AKS) with managed infrastructur
 - **Python 3.8+** with PyYAML: `pip install PyYAML`
 
 **Azure Setup:**
+
 ```bash
 # Login to Azure
 az login
@@ -75,6 +123,7 @@ nano providers/azure/terraform/terraform.tfvars
 ```
 
 **Required Configuration Values:**
+
 - `subscription_id`: Your Azure subscription ID
 - `project_name`: Your project name (e.g., "verify")
 - `environment`: Environment name (e.g., "dev", "prod")
@@ -88,6 +137,7 @@ nano providers/azure/terraform/terraform.tfvars
 ```
 
 This script will:
+
 - Create Azure resource groups
 - Deploy AKS cluster with GPU and CPU node pools
 - Set up PostgreSQL database
@@ -103,6 +153,7 @@ This script will:
 ```
 
 This script will:
+
 - Generate Helm values from Terraform outputs
 - Deploy External Secrets Operator
 - Deploy the Verify application components
@@ -118,6 +169,22 @@ For an existing AKS cluster where you only want to test a new packaged chart ver
   --chart-package helm-charts/verify/verify-<version>.tgz \
   --values my-values.yaml
 ```
+
+For a full redeploy into an existing AKS cluster without Terraform outputs, pass the cluster coordinates plus the Azure values that were previously coming from Terraform:
+
+```bash
+./providers/azure/scripts/deploy-helm.sh \
+  --cluster-name <aks-name> \
+  --resource-group <aks-resource-group> \
+  --key-vault-uri https://<key-vault>.vault.azure.net/ \
+  --external-secrets-client-id <external-secrets-workload-identity-client-id> \
+  --skipAgic \
+  --chart-package helm-charts/verify/verify-<version>.tgz \
+  --values my-values.yaml
+```
+
+If you also want the script to install AGIC without Terraform outputs, additionally provide:
+`--agic-subscription-id`, `--agic-resource-group`, `--agic-name`, `--agic-use-private-ip`, `--agic-identity-client-id`, and `--agic-identity-resource-id`.
 
 #### 4. Verify Deployment
 
@@ -146,6 +213,7 @@ Deploy to an existing Kubernetes cluster (any provider).
 #### Prerequisites
 
 **Required Tools:**
+
 - **Helm** (v3.12.0+): [Install Helm](https://helm.sh/docs/intro/install/)
 - **kubectl** (v1.28.0+): [Install kubectl](https://kubernetes.io/docs/tasks/tools/)
 - **Existing Kubernetes cluster** with appropriate resources
@@ -179,12 +247,14 @@ Deploy to Amazon EKS (future implementation).
 #### Prerequisites
 
 **Required Tools:**
+
 - **AWS CLI** (v2.0+): [Install AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
 - **Terraform** (v1.5.0+): [Install Terraform](https://learn.hashicorp.com/tutorials/terraform/install-cli)
 - **Helm** (v3.12.0+): [Install Helm](https://helm.sh/docs/intro/install/)
 - **kubectl** (v1.28.0+): [Install kubectl](https://kubernetes.io/docs/tasks/tools/)
 
 **AWS Setup:**
+
 ```bash
 # Configure AWS CLI
 aws configure
@@ -262,6 +332,7 @@ The infrastructure consists of three main layers:
 ### Components
 
 #### 1. Compute Layer (AKS)
+
 - **Azure Kubernetes Service Cluster**: Container orchestration platform
 - **Configuration**: Private cluster with Azure CNI networking
 - **Node Pools**:
@@ -270,11 +341,13 @@ The infrastructure consists of three main layers:
   - GPU pool: GPU-accelerated workloads (inference service)
 
 #### 2. Storage Layer
+
 - **PostgreSQL Flexible Server**: Primary database for application data
 - **Azure Storage Account**: Blob storage for documents and model weights
 - **Private Endpoints**: Secure connectivity to storage services
 
 #### 3. Application Layer
+
 - **UI Service**: Web interface for document verification
 - **Verification Service**: Document processing and verification logic
 - **Inference Service**: AI/ML model inference for document analysis
@@ -284,6 +357,7 @@ The infrastructure consists of three main layers:
 ## 🚀 Supported Deployment Scenarios
 
 ### 1. Azure Kubernetes Service (AKS) - Production Ready
+
 - **Infrastructure**: Terraform-managed AKS cluster with private networking
 - **Storage**: Azure Database for PostgreSQL and Azure Storage Account
 - **Secrets**: External Secrets Operator with Azure Key Vault integration
@@ -291,6 +365,7 @@ The infrastructure consists of three main layers:
 - **GPU Support**: NVIDIA device plugin for GPU workloads
 
 ### 2. Generic Kubernetes Cluster - Production Ready
+
 - **Infrastructure**: Existing Kubernetes cluster (any provider)
 - **Storage**: In-cluster PostgreSQL or external database
 - **Secrets**: Standard Kubernetes secrets or External Secrets Operator
@@ -298,6 +373,7 @@ The infrastructure consists of three main layers:
 - **GPU Support**: NVIDIA device plugin (optional)
 
 ### 3. Amazon EKS - Placeholder (Future Implementation)
+
 - **Infrastructure**: Terraform-managed EKS cluster
 - **Storage**: Amazon RDS and S3
 - **Secrets**: External Secrets Operator with AWS Secrets Manager
@@ -372,11 +448,13 @@ The deployment uses a hierarchical configuration system:
 #### 1. Terraform Configuration
 
 Copy and customize the example:
+
 ```bash
 cp providers/azure/terraform/terraform.tfvars.example providers/azure/terraform/terraform.tfvars
 ```
 
 **Required Values:**
+
 ```hcl
 # Basic Configuration
 project_name     = "verify"                    # Your project name
@@ -484,17 +562,21 @@ application:
 The repository includes comprehensive example configuration files to help you get started:
 
 #### Azure Examples
+
 - **`providers/azure/terraform/terraform.tfvars.example`**: Basic Azure configuration
 - **`providers/azure/values-azure-example.yaml`**: Azure-specific Helm values
 
 #### Generic Kubernetes Examples
+
 - **`providers/generic/values-generic-example.yaml`**: Generic Kubernetes configuration
 - **`providers/generic/customValuesGeneric.yaml`**: Custom values example
 
 #### AWS Examples (Placeholder)
+
 - **`providers/aws/values-aws-example.yaml`**: AWS-specific configuration (future implementation)
 
 #### Usage
+
 ```bash
 # Copy and customize the appropriate example
 cp providers/azure/terraform/terraform.tfvars.example providers/azure/terraform/terraform.tfvars
@@ -519,6 +601,7 @@ provider:
 ### Database Configuration
 
 #### In-Cluster Database (Generic/AWS)
+
 ```yaml
 database:
   mode: "in-cluster"
@@ -535,6 +618,7 @@ database:
 ```
 
 #### External Database (Azure/AWS)
+
 ```yaml
 database:
   mode: "external"
@@ -551,6 +635,7 @@ database:
 ### TLS Configuration with cert-manager
 
 #### Automatic TLS Certificate Management
+
 When cert-manager is enabled, the ingress will automatically request and manage TLS certificates from Let's Encrypt:
 
 ```yaml
@@ -587,6 +672,7 @@ application:
 ```
 
 #### Manual TLS Configuration (without cert-manager)
+
 ```yaml
 # Disable cert-manager
 certManager:
@@ -611,6 +697,7 @@ application:
 ### Secrets Management
 
 #### External Secrets (Azure)
+
 ```yaml
 secrets:
   mode: "external-secrets"
@@ -620,6 +707,7 @@ externalSecrets:
 ```
 
 #### Kubernetes Secrets (Generic/AWS)
+
 ```yaml
 secrets:
   mode: "kubernetes-secrets"
@@ -637,6 +725,7 @@ secrets:
 ### Infrastructure Components
 
 #### NVIDIA Device Plugin
+
 ```yaml
 infrastructure:
   nvidiaDevicePlugin:
@@ -647,6 +736,7 @@ infrastructure:
 ```
 
 #### NGINX Ingress Controller
+
 ```yaml
 infrastructure:
   nginxIngress:
@@ -661,6 +751,7 @@ infrastructure:
 ```
 
 #### cert-manager (Optional)
+
 ```yaml
 # cert-manager configuration for automatic TLS certificate management
 certManager:
@@ -691,6 +782,7 @@ clusterIssuer:
 ### Azure Manual Deployment
 
 1. **Deploy Infrastructure**:
+
    ```bash
    cd providers/azure/terraform
    terraform init
@@ -699,6 +791,7 @@ clusterIssuer:
    ```
 
 2. **Deploy Applications**:
+
    ```bash
    # Generate Helm values from Terraform outputs
    ./providers/azure/scripts/generate-helm-values-updated.sh
@@ -712,12 +805,14 @@ clusterIssuer:
 ### Generic Kubernetes Manual Deployment
 
 1. **Prepare values file**:
+
    ```bash
    cp providers/generic/values-generic-example.yaml my-values.yaml
    # Edit my-values.yaml with your configuration
    ```
 
 2. **Deploy using Helm**:
+
    ```bash
    helm install verify ./helm-charts/verify \
      --namespace verify \
@@ -728,6 +823,7 @@ clusterIssuer:
 ## 🔐 Security Features
 
 ### Azure Deployment
+
 - Private AKS cluster with no public API server
 - Private endpoints for storage and database
 - Network policies for pod-to-pod communication
@@ -738,6 +834,7 @@ clusterIssuer:
 - **ACR authentication with service principal**
 
 ### Generic Kubernetes Deployment
+
 - Network policies for pod-to-pod communication
 - RBAC enabled with least privilege access
 - **Standard Kubernetes secrets or External Secrets Operator**
@@ -747,6 +844,7 @@ clusterIssuer:
 ## 🐳 Container Registry
 
 The application supports multiple container registries with:
+
 - **Primary Registry**: `aderanteng.azurecr.io` (Aderant ACR)
 - **Secondary Registry**: `zerosystems.azurecr.io` (Hercules ACR)
 - **Custom Registries**: Configurable per deployment
@@ -758,6 +856,7 @@ The application supports multiple container registries with:
 ### Registry Override Examples
 
 #### Component-Specific Registry Overrides
+
 ```yaml
 application:
   dps:
@@ -777,15 +876,18 @@ application:
 The application is deployed using Helm charts with the following structure:
 
 ### Main Chart: `verify`
+
 - **Purpose**: Main application chart that orchestrates all components
 - **Dependencies**: `storage` and `application` subcharts
 - **Location**: `helm-charts/verify/`
 
 ### Subcharts:
+
 - **`storage`**: Redis, RabbitMQ, and blob storage components
 - **`application`**: DPS, Inference, Verification, and UI services
 
 ### Key Features:
+
 - **Modular design**: Separate charts for different concerns
 - **Value inheritance**: Global values passed to subcharts
 - **Override capability**: Easy to customize specific components
@@ -797,6 +899,7 @@ The application is deployed using Helm charts with the following structure:
 ## 🔧 Cluster Access
 
 ### Azure Private Cluster Access
+
 Since the AKS cluster is private, use the provided helper script for kubectl operations:
 
 ```bash
@@ -811,6 +914,7 @@ Since the AKS cluster is private, use the provided helper script for kubectl ope
 ```
 
 ### Generic Kubernetes Cluster Access
+
 Use standard kubectl commands with your current kubecontext:
 
 ```bash
@@ -858,6 +962,7 @@ kubectl get events -n verify --sort-by='.lastTimestamp'
 #### 1. Deployment Failures
 
 **Issue**: Infrastructure deployment fails
+
 ```bash
 # Check Terraform state
 cd providers/azure/terraform
@@ -870,6 +975,7 @@ az role assignment list --assignee $(az account show --query user.name -o tsv)
 ```
 
 **Issue**: Application deployment fails
+
 ```bash
 # Check Helm chart syntax
 helm template verify ./helm-charts/verify --values your-values.yaml
@@ -882,6 +988,7 @@ kubectl describe secret <secret-name> -n verify
 #### 2. Pod Issues
 
 **Issue**: Pods stuck in Pending
+
 ```bash
 # Check node resources
 kubectl describe nodes
@@ -896,6 +1003,7 @@ kubectl describe pvc <pvc-name> -n verify
 ```
 
 **Issue**: Pods in CrashLoopBackOff
+
 ```bash
 # Check pod logs
 kubectl logs <pod-name> -n verify --previous
@@ -909,6 +1017,7 @@ kubectl describe pod <pod-name> -n verify | grep -A 10 "Limits:"
 #### 3. Network Issues
 
 **Issue**: Services not accessible
+
 ```bash
 # Check service endpoints
 kubectl get endpoints -n verify
@@ -922,6 +1031,7 @@ kubectl describe ingress -n verify
 ```
 
 **Issue**: DNS resolution problems
+
 ```bash
 # Check DNS configuration
 kubectl get configmap -n kube-system coredns
@@ -931,6 +1041,7 @@ kubectl exec -it <pod-name> -n verify -- nslookup kubernetes.default
 #### 4. Storage Issues
 
 **Issue**: PVC stuck in Pending
+
 ```bash
 # Check storage class
 kubectl get storageclass
@@ -941,6 +1052,7 @@ az storage account show --name <storage-account> --resource-group <rg>
 ```
 
 **Issue**: Mount errors
+
 ```bash
 # Check storage account connectivity
 kubectl exec -it <pod-name> -n verify -- nslookup <storage-account>.blob.core.windows.net
@@ -952,6 +1064,7 @@ az network private-endpoint show --name <endpoint-name> --resource-group <rg>
 #### 5. Database Issues
 
 **Issue**: Database connection failed
+
 ```bash
 # Check database secret
 kubectl get secret db -n verify -o yaml
@@ -965,6 +1078,7 @@ kubectl exec -it <pod-name> -n verify -- psql -h <db-host> -U <user> -d <databas
 #### 6. GPU Issues
 
 **Issue**: GPU not available
+
 ```bash
 # Check GPU nodes
 kubectl get nodes -l model_device=gpu
@@ -978,6 +1092,7 @@ kubectl logs -n kube-system -l name=nvidia-device-plugin-ds
 #### 7. cert-manager Issues
 
 **Issue**: Certificate not issued
+
 ```bash
 # Check cert-manager status
 kubectl get pods -n cert-manager
@@ -990,6 +1105,7 @@ kubectl describe certificate <cert-name> -n verify
 ```
 
 **Issue**: HTTP01 challenge failing
+
 ```bash
 # Check ingress configuration
 kubectl describe ingress -n verify
@@ -1002,6 +1118,7 @@ kubectl logs -n cert-manager -l app=cert-manager
 ### Advanced Diagnostics
 
 #### Complete System Health Check
+
 ```bash
 #!/bin/bash
 echo "=== Cluster Status ==="
@@ -1027,6 +1144,7 @@ kubectl get events -n verify --sort-by='.lastTimestamp'
 ```
 
 #### Resource Investigation
+
 ```bash
 # Check resource quotas and limits
 kubectl describe quota -n verify
@@ -1038,6 +1156,7 @@ kubectl exec -it <pod-name> -n verify -- df -h
 ```
 
 #### Network Investigation
+
 ```bash
 # Check network connectivity
 kubectl exec -it <pod-name> -n verify -- ping <target-ip>
@@ -1062,7 +1181,9 @@ If you're still experiencing issues:
 ## 🎯 Common Deployment Scenarios
 
 ### Development Environment
+
 For development and testing:
+
 ```bash
 # Copy and customize the basic configuration
 cp providers/azure/terraform/terraform.tfvars.example providers/azure/terraform/terraform.tfvars
@@ -1076,7 +1197,9 @@ nano providers/azure/terraform/terraform.tfvars
 ```
 
 ### Production Environment
+
 For production deployments:
+
 ```bash
 # Copy and customize the basic configuration
 cp providers/azure/terraform/terraform.tfvars.example providers/azure/terraform/terraform.tfvars
@@ -1090,7 +1213,9 @@ nano providers/azure/terraform/terraform.tfvars
 ```
 
 ### Multi-Registry Deployment
+
 For using multiple container registries:
+
 ```bash
 # Create custom values with multi-registry configuration
 cat > my-multi-registry-values.yaml << EOF
@@ -1115,7 +1240,9 @@ helm upgrade verify ./helm-charts/verify \
 ```
 
 ### Generic Kubernetes Deployment
+
 For existing Kubernetes clusters:
+
 ```bash
 # Use generic configuration
 cp providers/generic/values-generic-example.yaml my-values.yaml
@@ -1130,24 +1257,28 @@ nano my-values.yaml
 ## 📚 Best Practices
 
 ### Security
+
 - **Never commit sensitive files**: Use `.gitignore` to exclude `terraform.tfvars`, `values.yaml`, and other sensitive files
 - **Use External Secrets**: Prefer Azure Key Vault integration over hardcoded secrets
 - **Private clusters**: Use private AKS clusters for production
 - **Network policies**: Implement network policies for pod-to-pod communication
 
 ### Resource Management
+
 - **Resource limits**: Always set appropriate resource limits and requests
 - **Node selectors**: Use node selectors to place workloads on appropriate nodes
 - **Storage classes**: Use appropriate storage classes for your workload requirements
 - **Monitoring**: Set up monitoring and alerting for production deployments
 
 ### Configuration Management
+
 - **Version control**: Keep configuration files in version control (excluding sensitive data)
 - **Environment separation**: Use different configurations for different environments
 - **Validation**: Always validate configuration before deployment
 - **Documentation**: Document any custom configurations or overrides
 
 ### Deployment Strategy
+
 - **Staged deployment**: Test in development before production
 - **Rolling updates**: Use rolling updates for zero-downtime deployments
 - **Backup strategy**: Implement backup and disaster recovery procedures
@@ -1156,6 +1287,7 @@ nano my-values.yaml
 ## 🔄 Maintenance and Updates
 
 ### Updating the Application
+
 ```bash
 # Update to latest versions (after generating values)
 helm upgrade verify ./helm-charts/verify \
@@ -1197,6 +1329,7 @@ terraform apply
 ```
 
 ### Monitoring and Maintenance
+
 ```bash
 # Check system health
 ./scripts/validate.sh
@@ -1213,11 +1346,13 @@ kubectl get pods -n verify
 ## 📊 Monitoring and Logging
 
 ### Azure Deployment
+
 - **Azure Monitor**: Integrated with AKS for metrics and logs
 - **Application Insights**: For application performance monitoring
 - **Log Analytics**: Centralized logging
 
 ### Generic Kubernetes Deployment
+
 - **Standard Kubernetes**: Use your cluster's monitoring solution
 - **Prometheus/Grafana**: Recommended for metrics and dashboards
 - **ELK Stack**: Recommended for centralized logging
@@ -1227,18 +1362,21 @@ kubectl get pods -n verify
 ### From Azure-Only to Multi-Cloud
 
 1. **Backup existing configuration**:
+
    ```bash
    # Backup your current Terraform state and values
    cp providers/azure/terraform/terraform.tfvars backup-terraform.tfvars
    ```
 
 2. **Update to new structure**:
+
    ```bash
    # Your existing Azure deployment will continue to work
    # No changes required for existing Azure deployments
    ```
 
 3. **Deploy to new provider**:
+
    ```bash
    # For generic Kubernetes
    ./providers/generic/scripts/deploy-helm.sh --provider generic --values my-values.yaml
@@ -1247,16 +1385,19 @@ kubectl get pods -n verify
 ### Updating Existing Deployments
 
 1. **Backup Current Configuration**:
+
    ```bash
    kubectl get all -n verify -o yaml > backup-verify-resources.yaml
    ```
 
 2. **Update Values File**:
+
    ```bash
    # Add new configuration options to your values file
    ```
 
 3. **Upgrade Deployment**:
+
    ```bash
    helm upgrade verify ./helm-charts/verify --values your-values.yaml
    ```
@@ -1266,6 +1407,7 @@ kubectl get pods -n verify
 The deployment includes an optional Ubuntu VM bastion host for secure access to private AKS clusters.
 
 ### Features
+
 - **Ubuntu 22.04 LTS** VM with pre-installed tools (Azure CLI, kubectl, Helm)
 - **SSH Key Authentication** with generated RSA 4096-bit key pair
 - **Public IP Address** for external access
@@ -1273,6 +1415,7 @@ The deployment includes an optional Ubuntu VM bastion host for secure access to 
 - **SSH Keys Stored in Key Vault** for secure retrieval
 
 ### Usage
+
 ```bash
 # Download SSH private key
 KEY_VAULT_NAME=$(terraform output -raw key_vault_name)
@@ -1295,6 +1438,7 @@ ssh -i bastion_key.pem $USERNAME@$PUBLIC_IP
 The deployment uses External Secrets Operator for secure secret management.
 
 ### Architecture
+
 ```
 Azure Key Vault
     ↓ (Workload Identity)
@@ -1306,6 +1450,7 @@ Application Pods
 ```
 
 ### Benefits
+
 - **Centralized Secret Management**: All secrets managed in Azure Key Vault
 - **Automatic Synchronization**: Secrets automatically synced to Kubernetes
 - **Security**: No secrets stored in Git or Helm values
@@ -1313,6 +1458,7 @@ Application Pods
 - **Rotation**: Secrets can be rotated in Key Vault without application changes
 
 ### Configuration
+
 ```yaml
 externalSecrets:
   enabled: true
@@ -1329,16 +1475,19 @@ externalSecrets:
 ## 📋 Scripts Overview
 
 ### Deployment Scripts
+
 - **`deploy-infra.sh`**: Deploy Azure infrastructure using Terraform
 - **`deploy-helm.sh`**: Deploy the Verify application using Helm charts
 - **`validate.sh`**: General deployment validation
 
 ### Utility Scripts
+
 - **`validate-config.sh`**: Configuration validation for different deployment styles
 - **`generate-helm-values-updated.sh`**: Generate Helm values from Terraform outputs
 - **`kubectl-invoke.sh`**: Helper script for private cluster access
 
 ### Common Workflows
+
 ```bash
 # Full deployment
 ./providers/azure/scripts/deploy-infra.sh
@@ -1352,6 +1501,7 @@ externalSecrets:
   --resource-group <aks-resource-group> \
   --chart-package helm-charts/verify/verify-<version>.tgz \
   --values my-values.yaml
+  
 ```
 
 ## 🤝 Contributing
@@ -1369,6 +1519,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## 🆘 Support
 
 For support and questions:
+
 - Create an issue in this repository
 - Contact the development team
 - Check the troubleshooting section above
